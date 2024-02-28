@@ -60,8 +60,9 @@ struct MyGame {
     image_robot: Image,
     image_rock: Image,
     receiver: mpsc::Receiver<(f32,f32,f32,f32)>, // Canale per ricevere le coordinate del robot
-    len_x: f32, // Aggiungi len_x come campo
-    len_y: f32, // Aggiungi len_y come campo
+    len_x: f32, 
+    len_y: f32,
+    offset: (f32,f32)
 }
 
 impl MyGame {
@@ -130,26 +131,72 @@ impl MyGame {
             receiver: receiver, // Ricevi il ricevitore del canale come parametro
             len_x: len_x, // Inizializza len_x
             len_y: len_y, // Inizializza len_y
+            offset: (0.,0.)
         })
     }
 }
 
 impl EventHandler for MyGame {
     fn update(&mut self, ctx: &mut Context) -> GameResult {
-        if ctx.keyboard.is_key_pressed(KeyCode::W) {
+        // Definisci i flag per tenere traccia dello stato dei tasti premuti
+        let mut w_key_pressed = false;
+        let mut s_key_pressed = false;
+        let mut up_key_pressed = false;
+        let mut down_key_pressed = false;
+        let mut left_key_pressed = false;
+        let mut right_key_pressed = false;
+
+        // Verifica lo stato dei tasti e aggiorna lo stato di gioco di conseguenza
+        if ctx.keyboard.is_key_pressed(KeyCode::W) && !w_key_pressed {
             // Zoom in
             // Riduci la dimensione della cella della mappa
             // Ad esempio, dimezza le dimensioni della cella
             self.len_x += 1.0;
             self.len_y += 1.0;
+            w_key_pressed = true;
         }
-        if ctx.keyboard.is_key_pressed(KeyCode::S) {
+
+        if ctx.keyboard.is_key_pressed(KeyCode::S) && !s_key_pressed {
             // Zoom out
             // Aumenta la dimensione della cella della mappa
             // Ad esempio, raddoppia le dimensioni della cella
             self.len_x -= 1.0;
             self.len_y -= 1.0;
+            s_key_pressed = true;
         }
+
+        if ctx.keyboard.is_key_pressed(KeyCode::Up) && !up_key_pressed {
+            // Zoom out
+            // Aumenta la dimensione della cella della mappa
+            // Ad esempio, raddoppia le dimensioni della cella
+            self.offset.1 -= 1.0;
+            up_key_pressed = true;
+        }
+
+        if ctx.keyboard.is_key_pressed(KeyCode::Down) && !down_key_pressed {
+            // Zoom out
+            // Aumenta la dimensione della cella della mappa
+            // Ad esempio, raddoppia le dimensioni della cella
+            self.offset.1 += 1.0;
+            down_key_pressed = true;
+        }
+
+        if ctx.keyboard.is_key_pressed(KeyCode::Left) && !left_key_pressed {
+            // Zoom out
+            // Aumenta la dimensione della cella della mappa
+            // Ad esempio, raddoppia le dimensioni della cella
+            self.offset.0 -= 1.0;
+            left_key_pressed = true;
+        }
+
+        if ctx.keyboard.is_key_pressed(KeyCode::Right) && !right_key_pressed {
+            // Zoom out
+            // Aumenta la dimensione della cella della mappa
+            // Ad esempio, raddoppia le dimensioni della cella
+            self.offset.0 += 1.0;
+            right_key_pressed = true;
+        }
+
         Ok(())
     }
 
@@ -165,20 +212,22 @@ impl EventHandler for MyGame {
                 let mut index_y = top_space;
                 for row in &self.map {
                     for tile in row {
+                        
                         let draw_param = DrawParam::new()
-                            .dest(Vec2::new(index_x * self.len_x, index_y))
+                            .dest(Vec2::new((index_x - self.offset.0) * self.len_x, index_y - self.offset.1 * top_space))
                             .scale(Vec2::new(self.len_x, self.len_y));
         
                         canvas.draw(self.images.get(&tile.tile_type).unwrap(), draw_param);
                         match &tile.content {
                             Content::Rock(_) => {
                                 let draw_param = DrawParam::new()
-                                    .dest(Vec2::new(index_x * self.len_x + self.len_x/3.0, index_y + self.len_y/4.0))
+                                    .dest(Vec2::new((index_x - self.offset.0) * self.len_x + self.len_x/3.0, index_y - self.offset.1 * top_space + self.len_y/4.0))
                                     .scale(Vec2::new(self.len_x / 360.0, self.len_y / 340.));
                                 canvas.draw(&self.image_rock, draw_param);
                             },
                             _ => {}
                         }
+                        
                         index_x += 1.0;
                     }
                     index_x = 0.0;
