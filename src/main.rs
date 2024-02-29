@@ -62,7 +62,8 @@ struct MyGame {
     receiver: mpsc::Receiver<(f32,f32,f32,f32)>, // Canale per ricevere le coordinate del robot
     len_x: f32, 
     len_y: f32,
-    offset: (f32,f32)
+    offset: (f32,f32),
+    key_pressed: bool
 }
 
 impl MyGame {
@@ -131,77 +132,74 @@ impl MyGame {
             receiver: receiver, // Ricevi il ricevitore del canale come parametro
             len_x: len_x, // Inizializza len_x
             len_y: len_y, // Inizializza len_y
-            offset: (0.,0.)
+            offset: (0.,0.),
+            key_pressed: false
         })
     }
 }
 
 impl EventHandler for MyGame {
     fn update(&mut self, ctx: &mut Context) -> GameResult {
-        // Definisci i flag per tenere traccia dello stato dei tasti premuti
-        let mut w_key_pressed = false;
-        let mut s_key_pressed = false;
-        let mut up_key_pressed = false;
-        let mut down_key_pressed = false;
-        let mut left_key_pressed = false;
-        let mut right_key_pressed = false;
 
-        // Verifica lo stato dei tasti e aggiorna lo stato di gioco di conseguenza
-        if ctx.keyboard.is_key_pressed(KeyCode::W) && !w_key_pressed {
-            // Zoom in
-            // Riduci la dimensione della cella della mappa
-            // Ad esempio, dimezza le dimensioni della cella
-            self.len_x += 1.0;
-            self.len_y += 1.0;
-            w_key_pressed = true;
+        if !self.key_pressed {
+            // Verifica lo stato dei tasti e aggiorna lo stato di gioco di conseguenza
+            if ctx.keyboard.is_key_pressed(KeyCode::W) {
+                // Zoom in
+                // Riduci la dimensione della cella della mappa
+                // Ad esempio, dimezza le dimensioni della cella
+                self.len_x *= 1.5;
+                self.len_y *= 1.5;
+                self.key_pressed = true;
+            }
+
+            if ctx.keyboard.is_key_pressed(KeyCode::S) {
+                // Zoom out
+                // Aumenta la dimensione della cella della mappa
+                // Ad esempio, raddoppia le dimensioni della cella
+                self.len_x /= 1.5;
+                self.len_y /= 1.5;
+                self.key_pressed = true;
+            }
+
+            if ctx.keyboard.is_key_pressed(KeyCode::Up) {
+                // Zoom out
+                // Aumenta la dimensione della cella della mappa
+                // Ad esempio, raddoppia le dimensioni della cella
+                self.offset.1 -= 1.0;
+                self.key_pressed = true;
+            }
+
+            if ctx.keyboard.is_key_pressed(KeyCode::Down)  {
+                // Zoom out
+                // Aumenta la dimensione della cella della mappa
+                // Ad esempio, raddoppia le dimensioni della cella
+                self.offset.1 += 1.0;
+                self.key_pressed = true;
+            }
+
+            if ctx.keyboard.is_key_pressed(KeyCode::Left) {
+                // Zoom out
+                // Aumenta la dimensione della cella della mappa
+                // Ad esempio, raddoppia le dimensioni della cella
+                self.offset.0 -= 1.0;
+                self.key_pressed = true;
+            }
+
+            if ctx.keyboard.is_key_pressed(KeyCode::Right) {
+                // Zoom out
+                // Aumenta la dimensione della cella della mappa
+                // Ad esempio, raddoppia le dimensioni della cella
+                self.offset.0 += 1.0;
+                self.key_pressed = true;
+            }
         }
-
-        if ctx.keyboard.is_key_pressed(KeyCode::S) && !s_key_pressed {
-            // Zoom out
-            // Aumenta la dimensione della cella della mappa
-            // Ad esempio, raddoppia le dimensioni della cella
-            self.len_x -= 1.0;
-            self.len_y -= 1.0;
-            s_key_pressed = true;
-        }
-
-        if ctx.keyboard.is_key_pressed(KeyCode::Up) && !up_key_pressed {
-            // Zoom out
-            // Aumenta la dimensione della cella della mappa
-            // Ad esempio, raddoppia le dimensioni della cella
-            self.offset.1 -= 1.0;
-            up_key_pressed = true;
-        }
-
-        if ctx.keyboard.is_key_pressed(KeyCode::Down) && !down_key_pressed {
-            // Zoom out
-            // Aumenta la dimensione della cella della mappa
-            // Ad esempio, raddoppia le dimensioni della cella
-            self.offset.1 += 1.0;
-            down_key_pressed = true;
-        }
-
-        if ctx.keyboard.is_key_pressed(KeyCode::Left) && !left_key_pressed {
-            // Zoom out
-            // Aumenta la dimensione della cella della mappa
-            // Ad esempio, raddoppia le dimensioni della cella
-            self.offset.0 -= 1.0;
-            left_key_pressed = true;
-        }
-
-        if ctx.keyboard.is_key_pressed(KeyCode::Right) && !right_key_pressed {
-            // Zoom out
-            // Aumenta la dimensione della cella della mappa
-            // Ad esempio, raddoppia le dimensioni della cella
-            self.offset.0 += 1.0;
-            right_key_pressed = true;
-        }
-
         Ok(())
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult {
         while ctx.time.check_update_time(DESIRED_FPS) {
+            println!("------ Sono dentro la funzione draw! ------");
+            println!("{} {} {} {} {}",self.len_x,self.len_y,self.offset.0,self.offset.1,self.key_pressed);
             let mut canvas = Canvas::from_frame(ctx, Color::from([0.1, 0.2, 0.3, 1.0]));
             if let Ok(coord) = self.receiver.try_recv() {
                 // Calcola lo spazio vuoto in cima alla schermata
@@ -278,8 +276,8 @@ impl EventHandler for MyGame {
                     canvas.draw(&self.image_rock, draw_param);
                 }
             }
-    
             canvas.finish(ctx)?;
+            self.key_pressed = false;
         }
         Ok(())
     }
