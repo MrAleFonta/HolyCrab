@@ -18,11 +18,15 @@ use ggez::graphics::{self, Canvas, Color, DrawParam, Image};
 use ggez::event::{self, EventHandler};
 use ggez::glam::Vec2;
 use rand::Rng;
+use robotics_lib::energy::Energy;
+use robotics_lib::event::events::Event;
 use robotics_lib::runner::backpack;
+use robotics_lib::runner::backpack::BackPack;
 use robotics_lib::runner::{Runnable, Runner};
 use robotics_lib::world::coordinates::Coordinate;
 use robotics_lib::world::tile::{Content, Tile, TileType};
 use robotics_lib::world::world_generator::Generator;
+use robotics_lib::world::World;
 use worldgen_unwrap::public::WorldgeneratorUnwrap;
 use holy_crab_best_path::MinerRobot;
 
@@ -201,38 +205,34 @@ impl EventHandler for MyGame {
             println!("------ Sono dentro la funzione draw! ------");
             println!("{} {} {} {} {}",self.len_x,self.len_y,self.offset.0,self.offset.1,self.key_pressed);
             let mut canvas = Canvas::from_frame(ctx, Color::from([0.1, 0.2, 0.3, 1.0]));
-            if let Ok(coord) = self.receiver.try_recv() {
-                // Calcola lo spazio vuoto in cima alla schermata
-                let top_space = 50.0; // Altezza dello spazio vuoto
-                
+            if let Ok(coord) = self.receiver.try_recv() {                
                 // Disegna la mappa partendo dall'alto dello spazio vuoto
                 let mut index_x = 0.0;
-                let mut index_y = top_space;
+                let mut index_y = 0.;
                 for row in &self.map {
                     for tile in row {
-                        
                         let draw_param = DrawParam::new()
-                            .dest(Vec2::new((index_x - self.offset.0) * self.len_x, index_y - self.offset.1 * top_space))
+                            .dest(Vec2::new(index_x - self.offset.0 * self.len_x, index_y - self.offset.1 * self.len_y))
                             .scale(Vec2::new(self.len_x, self.len_y));
         
                         canvas.draw(self.images.get(&tile.tile_type).unwrap(), draw_param);
                         match &tile.content {
                             Content::Rock(_) => {
                                 let draw_param = DrawParam::new()
-                                    .dest(Vec2::new((index_x - self.offset.0) * self.len_x + self.len_x/3.0, index_y - self.offset.1 * top_space + self.len_y/4.0))
+                                    .dest(Vec2::new(index_x - self.offset.0 * self.len_x + self.len_x/3.0, index_y - self.offset.1 * self.len_y  + self.len_y/4.0))
                                     .scale(Vec2::new(self.len_x / 360.0, self.len_y / 340.));
                                 canvas.draw(&self.image_rock, draw_param);
                             },
                             _ => {}
                         }
                         
-                        index_x += 1.0;
+                        index_x += self.len_x
                     }
                     index_x = 0.0;
                     index_y += self.len_y;
                 }
                 // Disegna il robot con le nuove coordinate
-                let robot_dest = Vec2::new(coord.1 * self.len_y + self.len_y/4.0 -self.len_y/4., coord.0 * self.len_x + top_space + self.len_x/4.);
+                let robot_dest = Vec2::new(coord.1 * self.len_y - self.offset.0 * self.len_x, coord.0 * self.len_x + self.len_x/4. - self.offset.1 * self.len_y,);
                 canvas.draw(&self.image_robot, DrawParam::default().dest(robot_dest).scale(Vec2::new(self.len_x / 500.,self.len_y / 500.)));
                 // Tolgo dalla mappa la roccia
                 self.map[coord.0 as usize][coord.1 as usize].content = Content::None;
@@ -280,5 +280,62 @@ impl EventHandler for MyGame {
             self.key_pressed = false;
         }
         Ok(())
+    }
+}
+
+pub struct BotWrapper{
+    pub bot: MinerRobot
+}
+
+impl BotWrapper{
+    pub(crate) fn new(bot: MinerRobot) ->BotWrapper{
+        BotWrapper{
+            bot
+        }
+    }
+}
+
+impl Runnable for BotWrapper{
+    fn process_tick(&mut self, world: &mut World) {
+        self.bot.process_tick(world)
+    }
+
+    fn handle_event(&mut self, event: Event) {
+        match event {
+            Event::Ready => todo!(),
+            Event::Terminated => todo!(),
+            Event::TimeChanged(_) => todo!(),
+            Event::DayChanged(_) => todo!(),
+            Event::EnergyRecharged(_) => todo!(),
+            Event::EnergyConsumed(_) => todo!(),
+            Event::Moved(_, _) => todo!(),
+            Event::TileContentUpdated(_, _) => todo!(),
+            Event::AddedToBackpack(_, _) => todo!(),
+            Event::RemovedFromBackpack(_, _) => todo!(),
+        }
+    }
+
+    fn get_energy(&self) -> &Energy {
+        self.bot.get_energy()
+    }
+
+    fn get_energy_mut(&mut self) -> &mut Energy {
+        self.bot.get_energy_mut()
+    }
+
+    fn get_coordinate(&self) -> &Coordinate {
+        self.get_coordinate()
+    }
+
+    fn get_coordinate_mut(&mut self) -> &mut Coordinate {
+        self.get_coordinate_mut()
+    }
+
+    fn get_backpack(&self) -> &BackPack {
+        self.get_backpack()
+    }
+
+    fn get_backpack_mut(&mut self) -> &mut BackPack {
+        self.get_backpack_mut()
     }
 }
