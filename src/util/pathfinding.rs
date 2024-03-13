@@ -1,7 +1,10 @@
 pub mod path_find {
+    use std::time::Duration;
+
     // MinerRobot
     use crate::{MinerRobot, RobotState, SCAN_INCREASE};
 
+    use ggez::timer::sleep;
     // robotics lib
     use robotics_lib::interface::{destroy, go, Direction};
     use robotics_lib::world::{tile::Content, World};
@@ -33,7 +36,9 @@ pub mod path_find {
         /// - trying to collect rocks
         /// we increase the distance and reset the scanned value to false in order to call the discover once again
         pub fn move_and_collect_content(&mut self, world: &mut World, content: Content) {
-
+            /* AGGIUNTO DA ME */
+            sleep(Duration::from_millis(100));
+            /* --------------  */
             // getting the vector that contains the cost to reach tiles from the robot's coordinates
             let vec = self.get_cost_vector_to_content(world, content);
 

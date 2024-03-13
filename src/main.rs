@@ -10,6 +10,7 @@ use std::time::Duration;
 use colored::Colorize;
 use ggez::conf;
 use ggez::context::Has;
+use ggez::graphics::Rect;
 use ggez::input::keyboard::KeyCode;
 use ggez::timer::sleep;
 use ggez::GameError;
@@ -22,6 +23,7 @@ use robotics_lib::energy::Energy;
 use robotics_lib::event::events::Event;
 use robotics_lib::runner::backpack;
 use robotics_lib::runner::backpack::BackPack;
+use robotics_lib::runner::Robot;
 use robotics_lib::runner::{Runnable, Runner};
 use robotics_lib::world::coordinates::Coordinate;
 use robotics_lib::world::tile::{Content, Tile, TileType};
@@ -99,26 +101,18 @@ impl MyGame {
         let len_x = SCREEN_SIZE / map[0].len() as f32;
 
         // Avvio del thread che gestisce la logica del robot
-        let my_robot = MinerRobot::new();
+        let robot = MinerRobot::new(sender);
 
         thread::spawn(move || {
             // Accedi al MinerRobot all'interno del Mutex
-            let my_robot_box = Box::new(my_robot);
+            let my_robot_box = Box::new(robot);
 
             let run = Runner::new(my_robot_box, &mut world_generator); // Usa borrow_mut per ottenere il riferimento mutabile all'interno del Mutex
             match run {
                 Ok(mut running) => {
                     loop {
-                        // Invia le coordinate del robot attraverso il canale
-                        let coord = running.get_robot().get_coordinate(); // Usa borrow per ottenere il riferimento immutabile all'interno del Mutex
-                        let backpack = running.get_robot().get_backpack().get_contents();
-                        let number_of_rocks =  *backpack.get(&Content::Rock(0)).unwrap();
-                        let level_energy = running.get_robot().get_energy().get_energy_level();
-                        if let Err(e) = sender.send((coord.get_row() as f32, coord.get_col() as f32, level_energy as f32,number_of_rocks as f32)) {
-                            println!("Error sending robot coordinates: {:?}", e);
-                        }
                         let _ = running.game_tick();
-                        sleep(Duration::from_millis(1000));
+                        sleep(Duration::from_millis(3000));
                     }
                 }
                 Err(e) => {
@@ -151,8 +145,8 @@ impl EventHandler for MyGame {
                 // Zoom in
                 // Riduci la dimensione della cella della mappa
                 // Ad esempio, dimezza le dimensioni della cella
-                self.len_x *= 1.5;
-                self.len_y *= 1.5;
+                self.len_x *= 1.1;
+                self.len_y *= 1.1;
                 self.key_pressed = true;
             }
 
@@ -160,8 +154,8 @@ impl EventHandler for MyGame {
                 // Zoom out
                 // Aumenta la dimensione della cella della mappa
                 // Ad esempio, raddoppia le dimensioni della cella
-                self.len_x /= 1.5;
-                self.len_y /= 1.5;
+                self.len_x /= 1.2;
+                self.len_y /= 1.2;
                 self.key_pressed = true;
             }
 
@@ -201,141 +195,97 @@ impl EventHandler for MyGame {
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult {
-        while ctx.time.check_update_time(DESIRED_FPS) {
-            println!("------ Sono dentro la funzione draw! ------");
-            println!("{} {} {} {} {}",self.len_x,self.len_y,self.offset.0,self.offset.1,self.key_pressed);
-            let mut canvas = Canvas::from_frame(ctx, Color::from([0.1, 0.2, 0.3, 1.0]));
-            if let Ok(coord) = self.receiver.try_recv() {                
-                // Disegna la mappa partendo dall'alto dello spazio vuoto
-                let mut index_x = 0.0;
-                let mut index_y = 0.;
-                for row in &self.map {
-                    for tile in row {
+        let mut canvas = Canvas::from_frame(ctx, Color::from([0.1, 0.2, 0.3, 1.0]));
+        // Disegna la mappa partendo dall'alto dello spazio vuoto
+        if self.offset.0 < 0. {
+            self.offset.0 = 0.
+        }
+        if self.offset.1 < 0. {
+            self.offset.1 = 0.
+        }
+        if self.offset.0 > SCREEN_SIZE / self.len_x {
+            self.offset.0 = SCREEN_SIZE / self.len_x
+        }
+        if self.offset.1 > SCREEN_SIZE / self.len_y {
+            self.offset.1 = SCREEN_SIZE / self.len_y
+        }
+        let mut index_x = 0.0;
+        let mut index_y = 0.;
+        for row in &self.map {
+            for tile in row {
+                /*
+                let rect = Rect::new(index_x - self.offset.0 * self.len_x,index_y - self.offset.1 * self.len_y,self.len_x,self.len_y);
+                let rect_mesh = graphics::Mesh::new_rectangle(ctx, graphics::DrawMode::stroke(1.0), rect, Color::WHITE).unwrap();
+                canvas.draw(&rect_mesh, DrawParam::default());
+                */
+                let draw_param = DrawParam::new()
+                    .dest(Vec2::new(index_x - self.offset.0 * self.len_x, index_y - self.offset.1 * self.len_y))
+                    .scale(Vec2::new(self.len_x, self.len_y));
+                canvas.draw(self.images.get(&tile.tile_type).unwrap(), draw_param);
+                match &tile.content {
+                    Content::Rock(_) => {
                         let draw_param = DrawParam::new()
-                            .dest(Vec2::new(index_x - self.offset.0 * self.len_x, index_y - self.offset.1 * self.len_y))
-                            .scale(Vec2::new(self.len_x, self.len_y));
-        
-                        canvas.draw(self.images.get(&tile.tile_type).unwrap(), draw_param);
-                        match &tile.content {
-                            Content::Rock(_) => {
-                                let draw_param = DrawParam::new()
-                                    .dest(Vec2::new(index_x - self.offset.0 * self.len_x + self.len_x/3.0, index_y - self.offset.1 * self.len_y  + self.len_y/4.0))
-                                    .scale(Vec2::new(self.len_x / 360.0, self.len_y / 340.));
-                                canvas.draw(&self.image_rock, draw_param);
-                            },
-                            _ => {}
-                        }
-                        
-                        index_x += self.len_x
-                    }
-                    index_x = 0.0;
-                    index_y += self.len_y;
+                            .dest(Vec2::new(index_x - self.offset.0 * self.len_x + self.len_x/3.0, index_y - self.offset.1 * self.len_y  + self.len_y/4.0))
+                            .scale(Vec2::new(self.len_x / 360.0, self.len_y / 340.));
+                        canvas.draw(&self.image_rock, draw_param);
+                    },
+                    _ => {}
                 }
-                // Disegna il robot con le nuove coordinate
-                let robot_dest = Vec2::new(coord.1 * self.len_y - self.offset.0 * self.len_x, coord.0 * self.len_x + self.len_x/4. - self.offset.1 * self.len_y,);
-                canvas.draw(&self.image_robot, DrawParam::default().dest(robot_dest).scale(Vec2::new(self.len_x / 500.,self.len_y / 500.)));
-                // Tolgo dalla mappa la roccia
-                self.map[coord.0 as usize][coord.1 as usize].content = Content::None;
-                // Disegna il rettangolo rosso nello spazio vuoto in cima alla schermata
-                let text = graphics::Text::new(format!("Energy: "));
-                let text_dest = Vec2::new(10.0, 20.0);
-                canvas.draw(&text, DrawParam::new().dest(text_dest));
-                // Calcola la larghezza del rettangolo rosso in base alla percentuale desiderata (0.0 - 1.0)
-                let max_width = 200.0; // Larghezza massima del rettangolo
-
-                // Imposta le coordinate e le dimensioni del rettangolo più grande (con bordi visibili)
-                let big_rect_dest = graphics::Rect::new(text_dest.x + 70.0, text_dest.y - 5.0, max_width, 25.0);
-                let big_rect_mesh = graphics::Mesh::new_rectangle(
-                    ctx,
-                    graphics::DrawMode::stroke(2.0), // Imposta lo spessore del bordo a 2.0
-                    big_rect_dest,
-                    Color::WHITE, // Colore del bordo
-                )?;
-
-                // Calcola la larghezza del rettangolo rosso in base alla percentuale e crea il rettangolo rosso
-                let red_rect_width = coord.2 / 5.0;
-                let red_rect_dest = graphics::Rect::new(text_dest.x + 70.0, text_dest.y - 5.0, red_rect_width, 25.0);
-                let red_rect_mesh = graphics::Mesh::new_rectangle(
-                    ctx,
-                    graphics::DrawMode::fill(),
-                    red_rect_dest,
-                    Color::RED,
-                )?;
-                // Disegna prima il rettangolo più grande (con bordo) e poi il rettangolo rosso sopra di esso
-                canvas.draw(&big_rect_mesh, DrawParam::default());
-                canvas.draw(&red_rect_mesh, DrawParam::default());
-
-                let text = graphics::Text::new(format!("BackPack: "));
-                let text_dest = Vec2::new(1000.0, 20.0);
-                canvas.draw(&text, DrawParam::new().dest(text_dest));
-
-                for i in 0..coord.3 as usize {
-                    let draw_param = DrawParam::new()
-                        .dest(Vec2::new(1075.0 + 20.0*(i as f32+1.0 as f32), 15.0))
-                        .scale(Vec2::new(self.len_x / 360.0, self.len_y / 340.));
-                    canvas.draw(&self.image_rock, draw_param);
-                }
+                
+                index_x += self.len_x
             }
-            canvas.finish(ctx)?;
-            self.key_pressed = false;
+            index_x = 0.0;
+            index_y += self.len_y;
         }
+
+        // Disegna il rettangolo rosso nello spazio vuoto in cima alla schermata
+        let text = graphics::Text::new(format!("Energy: "));
+        let text_dest = Vec2::new(10.0, 20.0);
+        canvas.draw(&text, DrawParam::new().dest(text_dest));
+        // Calcola la larghezza del rettangolo rosso in base alla percentuale desiderata (0.0 - 1.0)
+        let max_width = 200.0; // Larghezza massima del rettangolo
+        // Imposta le coordinate e le dimensioni del rettangolo più grande (con bordi visibili)
+        let big_rect_dest = graphics::Rect::new(text_dest.x + 70.0, text_dest.y - 5.0, max_width, 25.0);
+        let big_rect_mesh = graphics::Mesh::new_rectangle(
+            ctx,
+            graphics::DrawMode::stroke(2.0), // Imposta lo spessore del bordo a 2.0
+            big_rect_dest,
+            Color::WHITE, // Colore del bordo
+        )?;
+        canvas.draw(&big_rect_mesh, DrawParam::default());
+
+        let text1 = graphics::Text::new(format!("BackPack: "));
+        let text_dest1 = Vec2::new(1000.0, 20.0);
+        canvas.draw(&text1, DrawParam::new().dest(text_dest1));
+
+        if let Ok(coord) = self.receiver.try_recv() {
+            println!("{} {} {} {}",coord.0,coord.1,coord.2,coord.3);                
+            // Disegna il robot con le nuove coordinate
+            let robot_dest = Vec2::new(coord.1 * self.len_y - self.offset.0 * self.len_x, coord.0 * self.len_x + self.len_x/4. - self.offset.1 * self.len_y,);
+            canvas.draw(&self.image_robot, DrawParam::default().dest(robot_dest).scale(Vec2::new(self.len_x / 500.,self.len_y / 500.)));
+            // Tolgo dalla mappa la roccia
+            self.map[coord.0 as usize][coord.1 as usize].content = Content::None;
+
+            // Calcola la larghezza del rettangolo rosso in base alla percentuale e crea il rettangolo rosso
+            let red_rect_width = coord.2 / 5.0;
+            let red_rect_dest = graphics::Rect::new(text_dest.x + 70.0, text_dest.y - 5.0, red_rect_width, 25.0);
+            let red_rect_mesh = graphics::Mesh::new_rectangle(
+                ctx,
+                graphics::DrawMode::fill(),
+                red_rect_dest,
+                Color::RED,
+            )?;
+            canvas.draw(&red_rect_mesh, DrawParam::default());
+
+            for i in 0..coord.3 as usize {
+                let draw_param = DrawParam::new()
+                    .dest(Vec2::new(1075.0 + 20.0*(i as f32+1.0 as f32), 15.0))
+                    .scale(Vec2::new(self.len_x / 360.0, self.len_y / 340.));
+                canvas.draw(&self.image_rock, draw_param);
+            }
+        }
+        canvas.finish(ctx)?;
+        self.key_pressed = false;
         Ok(())
-    }
-}
-
-pub struct BotWrapper{
-    pub bot: MinerRobot
-}
-
-impl BotWrapper{
-    pub(crate) fn new(bot: MinerRobot) ->BotWrapper{
-        BotWrapper{
-            bot
-        }
-    }
-}
-
-impl Runnable for BotWrapper{
-    fn process_tick(&mut self, world: &mut World) {
-        self.bot.process_tick(world)
-    }
-
-    fn handle_event(&mut self, event: Event) {
-        match event {
-            Event::Ready => todo!(),
-            Event::Terminated => todo!(),
-            Event::TimeChanged(_) => todo!(),
-            Event::DayChanged(_) => todo!(),
-            Event::EnergyRecharged(_) => todo!(),
-            Event::EnergyConsumed(_) => todo!(),
-            Event::Moved(_, _) => todo!(),
-            Event::TileContentUpdated(_, _) => todo!(),
-            Event::AddedToBackpack(_, _) => todo!(),
-            Event::RemovedFromBackpack(_, _) => todo!(),
-        }
-    }
-
-    fn get_energy(&self) -> &Energy {
-        self.bot.get_energy()
-    }
-
-    fn get_energy_mut(&mut self) -> &mut Energy {
-        self.bot.get_energy_mut()
-    }
-
-    fn get_coordinate(&self) -> &Coordinate {
-        self.get_coordinate()
-    }
-
-    fn get_coordinate_mut(&mut self) -> &mut Coordinate {
-        self.get_coordinate_mut()
-    }
-
-    fn get_backpack(&self) -> &BackPack {
-        self.get_backpack()
-    }
-
-    fn get_backpack_mut(&mut self) -> &mut BackPack {
-        self.get_backpack_mut()
     }
 }

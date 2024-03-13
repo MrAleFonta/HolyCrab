@@ -1,5 +1,7 @@
 use std::fmt::Debug;
-use std::sync::{Arc, Mutex};
+use std::sync::{mpsc, Arc, Mutex};
+use std::thread::sleep;
+use std::time::Duration;
 use std::usize;
 
 // modules for MinerRobot
@@ -59,7 +61,8 @@ pub struct MinerRobot {
     pub world_scanned: bool,
     pub state: RobotState,
     pub game_over: Arc<Mutex<bool>>,
-    pub coordinates:(usize, usize)
+    pub coordinates:(usize, usize),
+    pub sender: mpsc::Sender<(f32, f32, f32,f32)>,
 }
 
 impl MinerRobot {
@@ -71,7 +74,7 @@ impl MinerRobot {
     /// # Returns
     ///
     /// A new instance of Self
-    pub fn new() -> Self {
+    pub fn new(sender: mpsc::Sender<(f32, f32, f32,f32)>) -> Self {
         Self {
             robot: Robot::new(),
             name: String::from("The default miner"),
@@ -82,7 +85,8 @@ impl MinerRobot {
             world_scanned: false,
             state: RobotState::CollectingRocks,
             game_over: Arc::new(Mutex::from(false)),
-            coordinates: (0,0)
+            coordinates: (0,0),
+            sender
         }
     }
     /// Creates a new instance of MinerRobot given its name
@@ -94,7 +98,7 @@ impl MinerRobot {
     /// # Returns
     ///
     /// A new instance of Self
-    pub fn new_name(name: String) -> Self {
+    /*pub fn new_name(name: String) -> Self {
         Self {
             robot: Robot::new(),
             name,
@@ -105,9 +109,9 @@ impl MinerRobot {
             world_scanned: false,
             state: RobotState::CollectingRocks,
             game_over: Arc::new(Mutex::from(false)),
-            coordinates:(0,0)
+            coordinates:(0,0),
         }
-    }
+    }*/
 
     /// Utility methods
     ///
@@ -289,19 +293,37 @@ impl Runnable for MinerRobot {
     #[allow(dead_code)]
     fn handle_event(&mut self, event: Event) {
         match event {
-            Event::Ready => {}
-            Event::Terminated => {}
-            Event::TimeChanged(_) => {}
-            Event::DayChanged(_) => {}
-            Event::EnergyRecharged(_) => {}
-            Event::EnergyConsumed(_) => {}
-            Event::Moved(tile, coordinates) => {
-                let mut coordinate = self.coordinates;
-                coordinate = coordinates;
-            }
-            Event::TileContentUpdated(_, coordinate) => {}
-            Event::AddedToBackpack(_, _) => {}
-            Event::RemovedFromBackpack(_, _) => {}
+            Event::Ready => {},
+            Event::Terminated => {},
+            Event::TimeChanged(_) => {},
+            Event::DayChanged(_) => {},
+            Event::EnergyRecharged(v) => {
+                if let Err(e) = self.sender.send((self.get_coordinate().get_row() as f32,self.get_coordinate().get_col() as f32,self.get_energy().get_energy_level() as f32 + v as f32,self.get_backpack().get_size() as f32)) {
+                    println!("Error sending robot coordinates: {:?}", e);
+                }
+            },
+            Event::EnergyConsumed(v) => {
+                if let Err(e) = self.sender.send((self.get_coordinate().get_row() as f32,self.get_coordinate().get_col() as f32,self.get_energy().get_energy_level() as f32 - v as f32,self.get_backpack().get_size() as f32)) {
+                    println!("Error sending robot coordinates: {:?}", e);
+                }
+            },
+            Event::Moved(_, v) => {
+                if let Err(e) = self.sender.send((v.0 as f32,v.1 as f32,self.get_energy().get_energy_level() as f32,self.get_backpack().get_size() as f32)) {
+                    println!("Error sending robot coordinates: {:?}", e);
+                }
+            },
+            Event::TileContentUpdated(_, _) => {},
+            Event::AddedToBackpack(v, a) => {
+                match v {
+                    Content::Rock(_) => {
+                        if let Err(e) = self.sender.send((self.get_coordinate().get_row() as f32,self.get_coordinate().get_col() as f32,self.get_energy().get_energy_level() as f32,a as f32)) {
+                            println!("Error sending robot coordinates: {:?}", e);
+                        }
+                    },
+                    _ => {}
+                }
+            },
+            Event::RemovedFromBackpack(_, _) => {},
         }
     }
     #[allow(dead_code)]
