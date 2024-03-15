@@ -298,25 +298,61 @@ impl Runnable for MinerRobot {
             Event::TimeChanged(_) => {},
             Event::DayChanged(_) => {},
             Event::EnergyRecharged(v) => {
-                if let Err(e) = self.sender.send((self.get_coordinate().get_row() as f32,self.get_coordinate().get_col() as f32,self.get_energy().get_energy_level() as f32 + v as f32,self.get_backpack().get_size() as f32)) {
+                let mut numbers = 0.;
+                for (content, number) in self.get_backpack().get_contents() {
+                    match content {
+                        Content::Rock(_) => {
+                            numbers = *number as f32; 
+                        }
+                        _ => {}
+                    }
+                }
+                if let Err(e) = self.sender.send((self.get_coordinate().get_row() as f32,self.get_coordinate().get_col() as f32,self.get_energy().get_energy_level() as f32 + v as f32,numbers)) {
                     println!("Error sending robot coordinates: {:?}", e);
                 }
             },
             Event::EnergyConsumed(v) => {
-                if let Err(e) = self.sender.send((self.get_coordinate().get_row() as f32,self.get_coordinate().get_col() as f32,self.get_energy().get_energy_level() as f32 - v as f32,self.get_backpack().get_size() as f32)) {
+                let mut numbers = 0.;
+                for (content, number) in self.get_backpack().get_contents() {
+                    match content {
+                        Content::Rock(_) => {
+                            numbers = *number as f32; 
+                        }
+                        _ => {}
+                    }
+                }
+                if let Err(e) = self.sender.send((self.get_coordinate().get_row() as f32,self.get_coordinate().get_col() as f32,self.get_energy().get_energy_level() as f32 - v as f32,numbers)) {
                     println!("Error sending robot coordinates: {:?}", e);
                 }
             },
             Event::Moved(_, v) => {
-                if let Err(e) = self.sender.send((v.0 as f32,v.1 as f32,self.get_energy().get_energy_level() as f32,self.get_backpack().get_size() as f32)) {
+                let mut numbers = 0.;
+                for (content, number) in self.get_backpack().get_contents() {
+                    match content {
+                        Content::Rock(_) => {
+                            numbers = *number as f32; 
+                        }
+                        _ => {}
+                    }
+                }
+                if let Err(e) = self.sender.send((v.0 as f32,v.1 as f32,self.get_energy().get_energy_level() as f32,numbers)) {
                     println!("Error sending robot coordinates: {:?}", e);
                 }
             },
             Event::TileContentUpdated(_, _) => {},
             Event::AddedToBackpack(v, a) => {
+                let mut numbers = 0.;
+                for (content, number) in self.get_backpack().get_contents() {
+                    match content {
+                        Content::Rock(_) => {
+                            numbers = *number as f32; 
+                        }
+                        _ => {}
+                    }
+                }
                 match v {
                     Content::Rock(_) => {
-                        if let Err(e) = self.sender.send((self.get_coordinate().get_row() as f32,self.get_coordinate().get_col() as f32,self.get_energy().get_energy_level() as f32,a as f32)) {
+                        if let Err(e) = self.sender.send((self.get_coordinate().get_row() as f32,self.get_coordinate().get_col() as f32,self.get_energy().get_energy_level() as f32,numbers + a as f32)) {
                             println!("Error sending robot coordinates: {:?}", e);
                         }
                     },

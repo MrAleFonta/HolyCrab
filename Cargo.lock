@@ -2074,6 +2074,7 @@ dependencies = [
  "bob_lib",
  "colored",
  "ggez",
+ "lazy_static",
  "pmp_collect_all",
  "rand 0.8.5",
  "rayon",

@@ -7,6 +7,7 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
 use std::time::Duration;
+use std::time::Instant;
 use colored::Colorize;
 use ggez::conf;
 use ggez::context::Has;
@@ -31,9 +32,12 @@ use robotics_lib::world::world_generator::Generator;
 use robotics_lib::world::World;
 use worldgen_unwrap::public::WorldgeneratorUnwrap;
 use holy_crab_best_path::MinerRobot;
+use lazy_static::lazy_static;
 
 const SCREEN_SIZE: f32 = 1500.;
-const DESIRED_FPS: u32 = 1;
+lazy_static! {
+    static ref last_coord: Arc<Mutex<(f32,f32)>> = Arc::new(Mutex::new((0.,0.)));
+}
 
 fn main() -> GameResult {
     let resource_dir = if let Ok(manifest_dir) = env::var("CARGO_MANIFEST_DIR") {
@@ -62,14 +66,18 @@ fn main() -> GameResult {
 
 struct MyGame {
     map: Vec<Vec<Tile>>,
-    images: HashMap<TileType, Image>,
+    images: HashMap<TileType, Color>,
     image_robot: Image,
     image_rock: Image,
     receiver: mpsc::Receiver<(f32,f32,f32,f32)>, // Canale per ricevere le coordinate del robot
     len_x: f32, 
     len_y: f32,
     offset: (f32,f32),
-    key_pressed: bool
+    key_pressed: bool,
+    last_coord_time: Option<Instant>,
+    last_coord: (f32,f32),
+    image_robot_down: Image,
+    number_of_rocks: f32
 }
 
 impl MyGame {
@@ -79,6 +87,7 @@ impl MyGame {
         receiver: mpsc::Receiver<(f32, f32, f32,f32)>, // Aggiungi receiver come parametro
     ) -> GameResult<MyGame> {
         let mut hs = HashMap::new();
+        /*
         hs.insert(TileType::DeepWater, Image::from_path(ctx,"/tiles/Map_tile_37.png")?);
         hs.insert(TileType::ShallowWater, Image::from_path(ctx,"/tiles/Map_tile_01.png")?);
         hs.insert(TileType::Grass, Image::from_path(ctx,"/tiles/Map_tile_23.png")?);
@@ -88,7 +97,16 @@ impl MyGame {
         hs.insert(TileType::Snow, Image::from_path(ctx,"/tiles/Map_tile_23.png")?);
         hs.insert(TileType::Mountain, Image::from_path(ctx,"/tiles/Map_tile_23.png")?);
         hs.insert(TileType::Street, Image::from_path(ctx,"/tiles/Map_tile_23.png")?);
-
+        */
+        hs.insert(TileType::DeepWater, Color::from_rgb(0, 102, 204)); // Blu simile al mare per DeepWater
+        hs.insert(TileType::ShallowWater, Color::from_rgb(102, 153, 204)); // Azzurro leggermente più scuro per ShallowWater
+        hs.insert(TileType::Grass, Color::from_rgb(0, 153, 51)); // Verde per Grass
+        hs.insert(TileType::Hill, Color::from_rgb(0, 204, 0)); // Verde per Hill
+        hs.insert(TileType::Sand, Color::from_rgb(204, 204, 102)); // Giallo più spento per Sand
+        hs.insert(TileType::Lava, Color::from_rgb(255, 0, 0)); // Rosso per Lava
+        hs.insert(TileType::Snow, Color::from_rgb(255, 255, 255)); // Bianco per Snow
+        hs.insert(TileType::Mountain, Color::from_rgb(150, 150, 150)); // Grigio scuro spento per Mountain
+        hs.insert(TileType::Street, Color::from_rgb(102, 102, 102)); // Grigio più spento per Street
         let gui_start = false;
         let path = PathBuf::new().join("world/bridge2.bin");
         let mut world_generator = WorldgeneratorUnwrap::init(gui_start, Some(path));
@@ -131,7 +149,11 @@ impl MyGame {
             len_x: len_x, // Inizializza len_x
             len_y: len_y, // Inizializza len_y
             offset: (0.,0.),
-            key_pressed: false
+            key_pressed: false,
+            last_coord_time: None,
+            last_coord: (0.,0.),
+            image_robot_down: Image::from_path(ctx,"/objects/elf_giù.png")?,
+            number_of_rocks: 0.
         })
     }
 }
@@ -213,20 +235,21 @@ impl EventHandler for MyGame {
         let mut index_y = 0.;
         for row in &self.map {
             for tile in row {
-                /*
+                
                 let rect = Rect::new(index_x - self.offset.0 * self.len_x,index_y - self.offset.1 * self.len_y,self.len_x,self.len_y);
-                let rect_mesh = graphics::Mesh::new_rectangle(ctx, graphics::DrawMode::stroke(1.0), rect, Color::WHITE).unwrap();
-                canvas.draw(&rect_mesh, DrawParam::default());
-                */
+                let rect_mesh = graphics::Mesh::new_rectangle(ctx, graphics::DrawMode::fill(), rect,*self.images.get(&tile.tile_type).unwrap());
+                canvas.draw(&rect_mesh.unwrap(), DrawParam::default());
+                /*
                 let draw_param = DrawParam::new()
                     .dest(Vec2::new(index_x - self.offset.0 * self.len_x, index_y - self.offset.1 * self.len_y))
                     .scale(Vec2::new(self.len_x, self.len_y));
                 canvas.draw(self.images.get(&tile.tile_type).unwrap(), draw_param);
+                */
                 match &tile.content {
                     Content::Rock(_) => {
                         let draw_param = DrawParam::new()
-                            .dest(Vec2::new(index_x - self.offset.0 * self.len_x + self.len_x/3.0, index_y - self.offset.1 * self.len_y  + self.len_y/4.0))
-                            .scale(Vec2::new(self.len_x / 360.0, self.len_y / 340.));
+                            .dest(Vec2::new(index_x - self.offset.0 * self.len_x + self.len_x/3.0, index_y - self.offset.1 * self.len_y))
+                            .scale(Vec2::new(self.len_x / 500.0, self.len_y / 400.));
                         canvas.draw(&self.image_rock, draw_param);
                     },
                     _ => {}
@@ -261,10 +284,46 @@ impl EventHandler for MyGame {
         if let Ok(coord) = self.receiver.try_recv() {
             println!("{} {} {} {}",coord.0,coord.1,coord.2,coord.3);                
             // Disegna il robot con le nuove coordinate
-            let robot_dest = Vec2::new(coord.1 * self.len_y - self.offset.0 * self.len_x, coord.0 * self.len_x + self.len_x/4. - self.offset.1 * self.len_y,);
-            canvas.draw(&self.image_robot, DrawParam::default().dest(robot_dest).scale(Vec2::new(self.len_x / 500.,self.len_y / 500.)));
+            // controllo se è fermo da sue secondi
+            if self.last_coord == (coord.0,coord.1) {
+                if self.last_coord_time.is_some() {
+                    if self.last_coord_time.unwrap().elapsed() > Duration::from_millis(3000) {
+                        let robot_dest = Vec2::new(coord.1 * self.len_y - self.offset.0 * self.len_x, coord.0 * self.len_x + self.len_x/4. - self.offset.1 * self.len_y,);
+                        canvas.draw(&self.image_robot_down, DrawParam::default().dest(robot_dest).scale(Vec2::new(self.len_x / 500.,self.len_y / 500.)));
+                        sleep(Duration::from_millis(10));
+                        self.last_coord_time = Some(Instant::now());
+                    }
+                    else {
+                        self.last_coord = (coord.0,coord.1);
+                        let robot_dest = Vec2::new(coord.1 * self.len_y - self.offset.0 * self.len_x, coord.0 * self.len_x + self.len_x/4. - self.offset.1 * self.len_y,);
+                        canvas.draw(&self.image_robot, DrawParam::default().dest(robot_dest).scale(Vec2::new(self.len_x / 500.,self.len_y / 500.)));
+                    }
+                }
+                else {
+                    self.last_coord = (coord.0,coord.1);
+                    self.last_coord_time = Some(Instant::now());
+                    let robot_dest = Vec2::new(coord.1 * self.len_y - self.offset.0 * self.len_x, coord.0 * self.len_x + self.len_x/4. - self.offset.1 * self.len_y,);
+                    canvas.draw(&self.image_robot, DrawParam::default().dest(robot_dest).scale(Vec2::new(self.len_x / 500.,self.len_y / 500.)));
+                }
+            }
+            else {
+                self.last_coord = (coord.0,coord.1);
+                self.last_coord_time = Some(Instant::now());
+                let robot_dest = Vec2::new(coord.1 * self.len_y - self.offset.0 * self.len_x, coord.0 * self.len_x + self.len_x/4. - self.offset.1 * self.len_y,);
+                canvas.draw(&self.image_robot, DrawParam::default().dest(robot_dest).scale(Vec2::new(self.len_x / 500.,self.len_y / 500.)));
+            }
+            
+            //let robot_dest = Vec2::new(coord.1 * self.len_y - self.offset.0 * self.len_x, coord.0 * self.len_x + self.len_x/4. - self.offset.1 * self.len_y,);
+            //canvas.draw(&self.image_robot, DrawParam::default().dest(robot_dest).scale(Vec2::new(self.len_x / 500.,self.len_y / 500.)));
             // Tolgo dalla mappa la roccia
-            self.map[coord.0 as usize][coord.1 as usize].content = Content::None;
+            if self.map[coord.0 as usize][coord.1 as usize].content == Content::Rock(0) || self.map[coord.0 as usize][coord.1 as usize].content == Content::Rock(1) {
+                self.map[coord.0 as usize][coord.1 as usize].content = Content::None;
+                self.number_of_rocks += 1.
+            }
+            if self.map[coord.0 as usize][coord.1 as usize].tile_type == TileType::DeepWater {
+                self.map[coord.0 as usize][coord.1 as usize].tile_type = TileType::Street;
+                self.number_of_rocks -= 4.;
+            }
 
             // Calcola la larghezza del rettangolo rosso in base alla percentuale e crea il rettangolo rosso
             let red_rect_width = coord.2 / 5.0;
@@ -277,7 +336,7 @@ impl EventHandler for MyGame {
             )?;
             canvas.draw(&red_rect_mesh, DrawParam::default());
 
-            for i in 0..coord.3 as usize {
+            for i in 0..self.number_of_rocks as usize {
                 let draw_param = DrawParam::new()
                     .dest(Vec2::new(1075.0 + 20.0*(i as f32+1.0 as f32), 15.0))
                     .scale(Vec2::new(self.len_x / 360.0, self.len_y / 340.));
