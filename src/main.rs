@@ -66,7 +66,7 @@ fn main() -> GameResult {
 
 struct MyGame {
     map: Vec<Vec<Tile>>,
-    images: HashMap<TileType, Color>,
+    images: HashMap<TileType, Image>,
     image_robot: Image,
     image_rock: Image,
     receiver: mpsc::Receiver<(f32,f32,f32,f32)>, // Canale per ricevere le coordinate del robot
@@ -87,7 +87,7 @@ impl MyGame {
         receiver: mpsc::Receiver<(f32, f32, f32,f32)>, // Aggiungi receiver come parametro
     ) -> GameResult<MyGame> {
         let mut hs = HashMap::new();
-        /*
+        
         hs.insert(TileType::DeepWater, Image::from_path(ctx,"/tiles/Map_tile_37.png")?);
         hs.insert(TileType::ShallowWater, Image::from_path(ctx,"/tiles/Map_tile_01.png")?);
         hs.insert(TileType::Grass, Image::from_path(ctx,"/tiles/Map_tile_23.png")?);
@@ -97,7 +97,8 @@ impl MyGame {
         hs.insert(TileType::Snow, Image::from_path(ctx,"/tiles/Map_tile_23.png")?);
         hs.insert(TileType::Mountain, Image::from_path(ctx,"/tiles/Map_tile_23.png")?);
         hs.insert(TileType::Street, Image::from_path(ctx,"/tiles/Map_tile_23.png")?);
-        */
+        
+        /*
         hs.insert(TileType::DeepWater, Color::from_rgb(0, 102, 204)); // Blu simile al mare per DeepWater
         hs.insert(TileType::ShallowWater, Color::from_rgb(102, 153, 204)); // Azzurro leggermente più scuro per ShallowWater
         hs.insert(TileType::Grass, Color::from_rgb(0, 153, 51)); // Verde per Grass
@@ -107,6 +108,7 @@ impl MyGame {
         hs.insert(TileType::Snow, Color::from_rgb(255, 255, 255)); // Bianco per Snow
         hs.insert(TileType::Mountain, Color::from_rgb(150, 150, 150)); // Grigio scuro spento per Mountain
         hs.insert(TileType::Street, Color::from_rgb(102, 102, 102)); // Grigio più spento per Street
+         */
         let gui_start = false;
         let path = PathBuf::new().join("world/bridge2.bin");
         let mut world_generator = WorldgeneratorUnwrap::init(gui_start, Some(path));
@@ -165,8 +167,6 @@ impl EventHandler for MyGame {
             // Verifica lo stato dei tasti e aggiorna lo stato di gioco di conseguenza
             if ctx.keyboard.is_key_pressed(KeyCode::W) {
                 // Zoom in
-                // Riduci la dimensione della cella della mappa
-                // Ad esempio, dimezza le dimensioni della cella
                 self.len_x *= 1.1;
                 self.len_y *= 1.1;
                 self.key_pressed = true;
@@ -174,43 +174,47 @@ impl EventHandler for MyGame {
 
             if ctx.keyboard.is_key_pressed(KeyCode::S) {
                 // Zoom out
-                // Aumenta la dimensione della cella della mappa
-                // Ad esempio, raddoppia le dimensioni della cella
-                self.len_x /= 1.2;
-                self.len_y /= 1.2;
+                if self.len_x / 1.1 < SCREEN_SIZE / self.map.len() as f32 {
+                    self.len_x = SCREEN_SIZE / self.map.len() as f32;
+                    self.len_y = SCREEN_SIZE / self.map.len() as f32;
+                }
+                else {
+                    if self.len_x / 1.1 < SCREEN_SIZE / self.map.len() as f32 {
+                        self.len_x = SCREEN_SIZE / self.map.len() as f32;
+                        self.len_y = SCREEN_SIZE / self.map.len() as f32;
+                    }
+                    self.len_x /= 1.1;
+                    self.len_y /= 1.1;
+                }
                 self.key_pressed = true;
             }
 
             if ctx.keyboard.is_key_pressed(KeyCode::Up) {
-                // Zoom out
-                // Aumenta la dimensione della cella della mappa
-                // Ad esempio, raddoppia le dimensioni della cella
+                // Move up
                 self.offset.1 -= 1.0;
                 self.key_pressed = true;
             }
 
             if ctx.keyboard.is_key_pressed(KeyCode::Down)  {
-                // Zoom out
-                // Aumenta la dimensione della cella della mappa
-                // Ad esempio, raddoppia le dimensioni della cella
-                self.offset.1 += 1.0;
-                self.key_pressed = true;
+                // Move down
+                if self.offset.1 < self.map.len() as f32 - SCREEN_SIZE / self.len_y {
+                    self.offset.1 += 1.0;
+                    self.key_pressed = true;
+                }
             }
 
             if ctx.keyboard.is_key_pressed(KeyCode::Left) {
-                // Zoom out
-                // Aumenta la dimensione della cella della mappa
-                // Ad esempio, raddoppia le dimensioni della cella
+                // Move left
                 self.offset.0 -= 1.0;
                 self.key_pressed = true;
             }
 
             if ctx.keyboard.is_key_pressed(KeyCode::Right) {
-                // Zoom out
-                // Aumenta la dimensione della cella della mappa
-                // Ad esempio, raddoppia le dimensioni della cella
-                self.offset.0 += 1.0;
-                self.key_pressed = true;
+                // Move right
+                if self.offset.0 < self.map.len() as f32 - SCREEN_SIZE / self.len_y {
+                    self.offset.0 += 1.0;
+                    self.key_pressed = true;
+                }
             }
         }
         Ok(())
@@ -225,31 +229,26 @@ impl EventHandler for MyGame {
         if self.offset.1 < 0. {
             self.offset.1 = 0.
         }
-        if self.offset.0 > SCREEN_SIZE / self.len_x {
-            self.offset.0 = SCREEN_SIZE / self.len_x
+        if self.offset.0 + SCREEN_SIZE / self.len_x >= self.map.len() as f32 {
+            self.offset.0 = self.map.len() as f32 - SCREEN_SIZE / self.len_x
         }
-        if self.offset.1 > SCREEN_SIZE / self.len_y {
-            self.offset.1 = SCREEN_SIZE / self.len_y
+        if self.offset.1 + SCREEN_SIZE / self.len_y >= self.map.len() as f32 {
+            self.offset.1 = self.map.len() as f32 - SCREEN_SIZE / self.len_y
         }
-        let mut index_x = 0.0;
+        let mut index_x = 0.;
         let mut index_y = 0.;
         for row in &self.map {
             for tile in row {
-                
-                let rect = Rect::new(index_x - self.offset.0 * self.len_x,index_y - self.offset.1 * self.len_y,self.len_x,self.len_y);
-                let rect_mesh = graphics::Mesh::new_rectangle(ctx, graphics::DrawMode::fill(), rect,*self.images.get(&tile.tile_type).unwrap());
-                canvas.draw(&rect_mesh.unwrap(), DrawParam::default());
-                /*
                 let draw_param = DrawParam::new()
                     .dest(Vec2::new(index_x - self.offset.0 * self.len_x, index_y - self.offset.1 * self.len_y))
-                    .scale(Vec2::new(self.len_x, self.len_y));
+                    .scale(Vec2::new(self.len_x / 1 as f32, self.len_y / 1 as f32));
+
                 canvas.draw(self.images.get(&tile.tile_type).unwrap(), draw_param);
-                */
                 match &tile.content {
                     Content::Rock(_) => {
                         let draw_param = DrawParam::new()
-                            .dest(Vec2::new(index_x - self.offset.0 * self.len_x + self.len_x/3.0, index_y - self.offset.1 * self.len_y))
-                            .scale(Vec2::new(self.len_x / 500.0, self.len_y / 400.));
+                            .dest(Vec2::new(index_x - self.offset.0 * self.len_x + self.len_x/3.0, index_y - self.offset.1 * self.len_y  + self.len_y/4.0))
+                            .scale(Vec2::new(self.len_x / 360.0, self.len_y / 340.));
                         canvas.draw(&self.image_rock, draw_param);
                     },
                     _ => {}
@@ -282,7 +281,7 @@ impl EventHandler for MyGame {
         canvas.draw(&text1, DrawParam::new().dest(text_dest1));
 
         if let Ok(coord) = self.receiver.try_recv() {
-            println!("{} {} {} {}",coord.0,coord.1,coord.2,coord.3);                
+            //println!("{} {} {} {}",coord.0,coord.1,coord.2,coord.3);                
             // Disegna il robot con le nuove coordinate
             // controllo se è fermo da sue secondi
             if self.last_coord == (coord.0,coord.1) {
@@ -318,11 +317,11 @@ impl EventHandler for MyGame {
             // Tolgo dalla mappa la roccia
             if self.map[coord.0 as usize][coord.1 as usize].content == Content::Rock(0) || self.map[coord.0 as usize][coord.1 as usize].content == Content::Rock(1) {
                 self.map[coord.0 as usize][coord.1 as usize].content = Content::None;
-                self.number_of_rocks += 1.
+                self.number_of_rocks += 1.; 
             }
             if self.map[coord.0 as usize][coord.1 as usize].tile_type == TileType::DeepWater {
                 self.map[coord.0 as usize][coord.1 as usize].tile_type = TileType::Street;
-                self.number_of_rocks -= 4.;
+                self.number_of_rocks -= 3.;
             }
 
             // Calcola la larghezza del rettangolo rosso in base alla percentuale e crea il rettangolo rosso
@@ -339,7 +338,7 @@ impl EventHandler for MyGame {
             for i in 0..self.number_of_rocks as usize {
                 let draw_param = DrawParam::new()
                     .dest(Vec2::new(1075.0 + 20.0*(i as f32+1.0 as f32), 15.0))
-                    .scale(Vec2::new(self.len_x / 360.0, self.len_y / 340.));
+                    .scale(Vec2::new((SCREEN_SIZE/self.map.len() as f32) / 360.0, (SCREEN_SIZE/self.map.len() as f32) / 340.));
                 canvas.draw(&self.image_rock, draw_param);
             }
         }
@@ -348,3 +347,4 @@ impl EventHandler for MyGame {
         Ok(())
     }
 }
+
